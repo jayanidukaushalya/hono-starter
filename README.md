@@ -9,6 +9,7 @@ A production-ready starting point for JSON APIs, built on [Hono](https://hono.de
 | Framework               | [Hono](https://hono.dev)                                    |
 | Runtime / package manager | [Bun](https://bun.sh)                                      |
 | Database                | PostgreSQL via [Drizzle ORM](https://orm.drizzle.team) + [node-postgres](https://node-postgres.com) |
+| Authentication          | [Better Auth](https://www.better-auth.com) (email/password)  |
 | Validation              | [Zod](https://zod.dev) + [@hono/zod-validator](https://github.com/honojs/middleware/tree/main/packages/zod-validator) |
 | Testing                 | Bun's built-in test runner (`bun:test`)                      |
 | Linting / formatting    | [Biome](https://biomejs.dev)                                 |
@@ -21,7 +22,7 @@ Requires [Bun](https://bun.sh) `>=1.3.14`.
 
 ```bash
 bun install
-cp .env.example .env.local   # set DATABASE_URL to point at your Postgres instance
+cp .env.example .env.local   # set DATABASE_URL and BETTER_AUTH_SECRET (openssl rand -base64 32)
 bun run db:migrate
 bun dev
 ```
@@ -54,16 +55,20 @@ src/
   lib/
     env.ts         # Typed, validated environment variables (Zod)
     errors.ts      # Centralized error handler
+    auth.ts        # Better Auth instance (drizzle adapter, email/password)
   routes/
     health.ts      # GET /health
     greet.ts       # GET /greet — example of a validated route
+    me.ts          # GET /me — example route protected by requireAuth
+  middleware/
+    auth.ts        # requireAuth middleware — 401s if there's no valid session
   db/
     index.ts       # Drizzle client (Pool + drizzle instance), closeDb() for shutdown
     migrate.ts      # Applies migrations from drizzle/ — run via `bun run db:migrate`
     seed.ts         # Example seed script — run via `bun run db:seed`
     schema/
       index.ts      # Barrel export of all tables
-      users.ts       # Example table
+      auth.ts        # user/session/account/verification tables (Better Auth)
 drizzle/            # Generated SQL migrations + snapshots (committed to git)
 drizzle.config.ts   # drizzle-kit config (schema location, migrations output, credentials)
 ```
@@ -107,6 +112,39 @@ Migration files are plain SQL and are committed to git — they're the source of
 
 `bun run db:seed` runs `src/db/seed.ts`, a plain script using the same `db` client — extend it with whatever fixture data your app needs.
 
+## Authentication
+
+Auth is handled by [Better Auth](https://www.better-auth.com), configured in `src/lib/auth.ts` with the Drizzle adapter and email/password sign-in. Its routes are mounted at `/api/auth/*` in `src/app.ts`:
+
+- `POST /api/auth/sign-up/email` — create an account
+- `POST /api/auth/sign-in/email` — sign in, sets a session cookie
+- `POST /api/auth/sign-out` — sign out
+- `GET /api/auth/get-session` — fetch the current session
+
+Testing with curl/Postman: sign-in works fine, but sign-out and other state-changing calls need an `Origin` header matching a trusted origin (browsers send this automatically; curl doesn't) — CSRF protection rejects them otherwise.
+
+The `user`, `session`, `account`, and `verification` tables (`src/db/schema/auth.ts`) were generated with `bunx @better-auth/cli generate --config src/lib/auth.ts --output src/db/schema/auth.ts` — re-run that (and `bun run db:generate`) after changing `auth.ts`, rather than hand-editing the schema.
+
+**Protecting a route:** use the `requireAuth` middleware (`src/middleware/auth.ts`) — see `src/routes/me.ts` for a working example:
+
+```ts
+import { Hono } from "hono";
+import { type AuthVariables, requireAuth } from "#/middleware/auth";
+
+export const me = new Hono<{ Variables: AuthVariables }>().get("/", requireAuth, (c) =>
+  c.json({ user: c.get("user") }),
+);
+```
+
+**Defaults worth knowing about** (all from Better Auth itself, not custom code here):
+
+- Cookies are `httpOnly` always, and `Secure` automatically in production — nothing to configure.
+- CSRF protection (origin validation) is on by default and checked against `trustedOrigins`, which is set to `CORS_ORIGINS` — keep that list accurate in production.
+- Rate limiting is enabled automatically in production (disabled in dev) — no config needed unless you want to customize it.
+- Sessions last 7 days and refresh after 1 day of use; a signed cookie cache avoids a DB round trip on every request (5 minute TTL).
+- Passwords are hashed with scrypt.
+- `requireEmailVerification` is `false` — this starter has no email sending wired up. Turn it on once you configure `emailVerification.sendVerificationEmail` in `auth.ts` with a real mailer.
+
 ## Error Handling
 
 Throw `HTTPException` (from `hono/http-exception`) for expected errors — it's caught by the centralized handler in `src/lib/errors.ts` and returned as `{ error: message }` with the right status code. Unexpected exceptions are logged and returned as a generic `500` (with the message attached outside of production, for debugging).
@@ -119,7 +157,9 @@ Copy `.env.example` to `.env.local` and adjust as needed. Env vars are parsed an
 - `NODE_ENV` — `development` | `production` | `test`
 - `DATABASE_URL` — PostgreSQL connection string
 - `DATABASE_SSL` — `true` | `false` (default `false`) — require SSL for the database connection
-- `CORS_ORIGINS` — comma-separated list of allowed origins
+- `BETTER_AUTH_SECRET` — signing secret for sessions/cookies, min 32 chars (generate with `openssl rand -base64 32`)
+- `BETTER_AUTH_URL` — base URL of this API (default `http://localhost:3000`)
+- `CORS_ORIGINS` — comma-separated list of allowed origins (also used as Better Auth's `trustedOrigins`)
 
 ## Testing
 
