@@ -5,7 +5,6 @@ import { secureHeaders } from "hono/secure-headers";
 import { auth } from "#/integrations/better-auth/auth";
 import { env } from "#/lib/env";
 import { errorHandler } from "#/lib/errors";
-import { docs } from "#/routes/docs";
 import { greet } from "#/routes/greet";
 import { health } from "#/routes/health";
 import { me } from "#/routes/me";
@@ -27,7 +26,6 @@ app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 app.route("/health", health);
 app.route("/greet", greet);
 app.route("/me", me);
-app.route("/", docs);
 
 app.notFound((c) => c.json({ error: "Not Found" }, 404));
 app.onError(errorHandler);

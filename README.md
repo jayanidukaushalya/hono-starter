@@ -11,7 +11,6 @@ A production-ready starting point for JSON APIs, built on [Hono](https://hono.de
 | Database                | PostgreSQL via [Drizzle ORM](https://orm.drizzle.team) + [node-postgres](https://node-postgres.com) |
 | Authentication          | [Better Auth](https://www.better-auth.com) (email/password)  |
 | Validation              | [Zod](https://zod.dev) + [@hono/zod-validator](https://github.com/honojs/middleware/tree/main/packages/zod-validator) |
-| API docs                | Hand-written OpenAPI doc + [@hono/swagger-ui](https://github.com/honojs/middleware/tree/main/packages/swagger-ui) |
 | Testing                 | Bun's built-in test runner (`bun:test`)                      |
 | Linting / formatting    | [Biome](https://biomejs.dev)                                 |
 | Git hooks               | [lefthook](https://github.com/evilmartians/lefthook)          |
@@ -56,12 +55,10 @@ src/
   lib/
     env.ts         # Typed, validated environment variables (Zod)
     errors.ts      # Centralized error handler
-    openapi-spec.ts # Hand-written OpenAPI doc — update when routes change
   routes/
     health.ts      # GET /health
     greet.ts       # GET /greet — example of a validated route
     me.ts          # GET /me — example route protected by requireAuth
-    docs.ts        # GET /openapi (spec), GET /docs (Swagger UI)
   integrations/
     drizzle/
       client.ts     # Drizzle client (Pool + drizzle instance), closeDb() for shutdown
@@ -103,16 +100,6 @@ export const todos = new Hono().post("/", zValidator("json", bodySchema), (c) =>
 import { todos } from "#/routes/todos";
 app.route("/todos", todos);
 ```
-
-Add the route to `src/lib/openapi-spec.ts` too — see [API Docs](#api-docs) below.
-
-## API Docs
-
-`GET /openapi` serves an OpenAPI 3.0 document, `GET /docs` renders it with [Swagger UI](https://github.com/honojs/middleware/tree/main/packages/swagger-ui). The spec is hand-written in `src/lib/openapi-spec.ts`, not generated from routes — it's a plain object matching the [OpenAPI spec](https://swagger.io/specification/), so there's no other library to learn.
-
-This means it can drift from the actual routes if you forget to update it. With a handful of routes that's easy to keep in sync by hand; if the route count grows enough that this becomes a real risk, look at [hono-openapi](https://hono.dev/examples/hono-openapi) (generates the doc from `describeRoute()`/`validator()` calls on each route instead) as a follow-up migration — it wasn't chosen here to keep this starter's route definitions plain and dependency-light.
-
-Better Auth's own `/api/auth/*` routes aren't in this doc — they're handled internally by `auth.handler` and never touch `src/routes/`. Enable Better Auth's own [`openAPI()` plugin](https://www.better-auth.com/docs/plugins/open-api) in `src/integrations/better-auth/auth.ts` if you want interactive docs for those too (it ships its own reference UI, separate from this Swagger UI).
 
 ## Database
 
