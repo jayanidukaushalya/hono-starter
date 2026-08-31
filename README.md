@@ -8,6 +8,7 @@ A production-ready starting point for JSON APIs, built on [Hono](https://hono.de
 | ----------------------- | ------------------------------------------------------------ |
 | Framework               | [Hono](https://hono.dev)                                    |
 | Runtime / package manager | [Bun](https://bun.sh)                                      |
+| Database                | PostgreSQL via [Drizzle ORM](https://orm.drizzle.team) + [node-postgres](https://node-postgres.com) |
 | Validation              | [Zod](https://zod.dev) + [@hono/zod-validator](https://github.com/honojs/middleware/tree/main/packages/zod-validator) |
 | Testing                 | Bun's built-in test runner (`bun:test`)                      |
 | Linting / formatting    | [Biome](https://biomejs.dev)                                 |
@@ -20,7 +21,8 @@ Requires [Bun](https://bun.sh) `>=1.3.14`.
 
 ```bash
 bun install
-cp .env.example .env.local
+cp .env.example .env.local   # set DATABASE_URL to point at your Postgres instance
+bun run db:migrate
 bun dev
 ```
 
@@ -37,6 +39,11 @@ The server runs at `http://localhost:3000`.
 | `bun run lint` / `lint:fix`   | Lint with Biome                                |
 | `bun run format` / `format:fix` | Format with Biome                            |
 | `bun run check`               | Run Biome's combined lint + format check        |
+| `bun run db:generate`         | Generate a SQL migration from schema changes    |
+| `bun run db:migrate`          | Apply pending migrations to the database        |
+| `bun run db:push`             | Push schema directly to the database (dev only, no migration file) |
+| `bun run db:studio`           | Open Drizzle Studio to browse data              |
+| `bun run db:seed`             | Run the seed script                             |
 
 ## Project Structure
 
@@ -50,6 +57,15 @@ src/
   routes/
     health.ts      # GET /health
     greet.ts       # GET /greet — example of a validated route
+  db/
+    index.ts       # Drizzle client (Pool + drizzle instance), closeDb() for shutdown
+    migrate.ts      # Applies migrations from drizzle/ — run via `bun run db:migrate`
+    seed.ts         # Example seed script — run via `bun run db:seed`
+    schema/
+      index.ts      # Barrel export of all tables
+      users.ts       # Example table
+drizzle/            # Generated SQL migrations + snapshots (committed to git)
+drizzle.config.ts   # drizzle-kit config (schema location, migrations output, credentials)
 ```
 
 `app.ts` is exported separately from `index.ts` so routes can be tested directly via `app.request(...)` without binding a port.
@@ -77,6 +93,20 @@ import { todos } from "#/routes/todos";
 app.route("/todos", todos);
 ```
 
+## Database
+
+Schema lives in `src/db/schema/` as plain Drizzle table definitions, one file per table, re-exported from `src/db/schema/index.ts`. `src/db/index.ts` exports a shared `db` client built on a `pg.Pool`, plus `closeDb()` for graceful shutdown.
+
+**Workflow:**
+
+1. Edit or add a table in `src/db/schema/`.
+2. `bun run db:generate` — diffs the schema against migration history and writes a new SQL migration under `drizzle/`.
+3. `bun run db:migrate` — applies any pending migrations to the database configured via `DATABASE_URL`.
+
+Migration files are plain SQL and are committed to git — they're the source of truth for schema history, and running `db:migrate` again is a no-op if nothing is pending. `db:push` is available for quick local iteration (it syncs the schema directly, skipping migration files) but shouldn't be used against a database you care about.
+
+`bun run db:seed` runs `src/db/seed.ts`, a plain script using the same `db` client — extend it with whatever fixture data your app needs.
+
 ## Error Handling
 
 Throw `HTTPException` (from `hono/http-exception`) for expected errors — it's caught by the centralized handler in `src/lib/errors.ts` and returned as `{ error: message }` with the right status code. Unexpected exceptions are logged and returned as a generic `500` (with the message attached outside of production, for debugging).
@@ -87,6 +117,8 @@ Copy `.env.example` to `.env.local` and adjust as needed. Env vars are parsed an
 
 - `PORT` — port the server listens on (default `3000`)
 - `NODE_ENV` — `development` | `production` | `test`
+- `DATABASE_URL` — PostgreSQL connection string
+- `DATABASE_SSL` — `true` | `false` (default `false`) — require SSL for the database connection
 - `CORS_ORIGINS` — comma-separated list of allowed origins
 
 ## Testing
@@ -101,8 +133,11 @@ bun run test
 
 ```bash
 bun run build
+bun run db:migrate   # apply pending migrations before starting
 bun start
 ```
+
+Run migrations as a separate release step before starting new instances, rather than on every container boot — with multiple replicas, that avoids several instances racing to apply the same migration concurrently.
 
 A `Dockerfile` is included, targeting the official `oven/bun` image — build and run it behind any container host:
 

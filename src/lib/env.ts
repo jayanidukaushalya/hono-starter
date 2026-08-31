@@ -5,6 +5,11 @@ const envSchema = z.object({
 		.enum(["development", "production", "test"])
 		.default("development"),
 	PORT: z.coerce.number().int().positive().default(3000),
+	DATABASE_URL: z.string().url(),
+	DATABASE_SSL: z
+		.enum(["true", "false"])
+		.default("false")
+		.transform((value) => value === "true"),
 	CORS_ORIGINS: z
 		.string()
 		.default("")
