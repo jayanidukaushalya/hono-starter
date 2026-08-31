@@ -152,6 +152,14 @@ export const me = new Hono<{ Variables: AuthVariables }>().get("/", requireAuth,
 
 Throw `HTTPException` (from `hono/http-exception`) for expected errors — it's caught by the centralized handler in `src/lib/errors.ts` and returned as `{ error: message }` with the right status code. Unexpected exceptions are logged and returned as a generic `500` (with the message attached outside of production, for debugging).
 
+## Middleware
+
+Beyond CORS/logging/security headers, `src/app.ts` applies:
+
+- **Request ID** (`hono/request-id`) — every response carries an `X-Request-Id` header, for correlating a request across logs.
+- **Body Limit** (`hono/body-limit`) — rejects request bodies over 100kb with `413`, applied globally (covers `/api/auth/*` too).
+- **Timeout** (`hono/timeout`) — any request running longer than 10s is aborted with `504`, so a hung DB connection can't hold a request open indefinitely.
+
 ## Environment Variables
 
 Copy `.env.example` to `.env.local` and adjust as needed. Env vars are parsed and validated at startup via `src/lib/env.ts` (Zod) — the process fails fast with a clear error if something required is missing or malformed.
