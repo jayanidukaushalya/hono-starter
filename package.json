@@ -35,6 +35,7 @@
     "db:seed": "bun run src/integrations/drizzle/seed.ts"
   },
   "dependencies": {
+    "@hono/swagger-ui": "^0.6.1",
     "@hono/zod-validator": "^0.4.3",
     "better-auth": "^1.7.2",
     "dotenv": "^17.4.2",
