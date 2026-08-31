@@ -158,6 +158,7 @@ Beyond CORS/logging/security headers, `src/app.ts` applies:
 
 - **Request ID** (`hono/request-id`) — every response carries an `X-Request-Id` header, for correlating a request across logs.
 - **Body Limit** (`hono/body-limit`) — rejects request bodies over 100kb with `413`, applied globally (covers `/api/auth/*` too).
+- **Rate Limit** (`hono-rate-limiter`) — caps each client at 100 requests per 15-minute window, returning `429` with `RateLimit-*` headers once exceeded. Keyed by `X-Forwarded-For` (or the raw connection IP when there's no proxy in front); uses the in-memory store, so it resets on restart and doesn't share state across instances — swap in `RedisStore` from the same package if you run multiple replicas. This is on top of Better Auth's own rate limiting on `/api/auth/*` (production only), so auth endpoints get both.
 - **Timeout** (`hono/timeout`) — any request running longer than 10s is aborted with `504`, so a hung DB connection can't hold a request open indefinitely.
 
 ## Environment Variables
