@@ -1,5 +1,5 @@
 import { app } from "#/app";
-import { closeDb } from "#/db";
+import { closeDb } from "#/integrations/drizzle/client";
 import { env } from "#/lib/env";
 
 console.log(`Listening on http://localhost:${env.PORT}`);

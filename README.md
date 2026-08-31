@@ -55,25 +55,28 @@ src/
   lib/
     env.ts         # Typed, validated environment variables (Zod)
     errors.ts      # Centralized error handler
-    auth.ts        # Better Auth instance (drizzle adapter, email/password)
   routes/
     health.ts      # GET /health
     greet.ts       # GET /greet — example of a validated route
     me.ts          # GET /me — example route protected by requireAuth
-  middleware/
-    auth.ts        # requireAuth middleware — 401s if there's no valid session
-  db/
-    index.ts       # Drizzle client (Pool + drizzle instance), closeDb() for shutdown
-    migrate.ts      # Applies migrations from drizzle/ — run via `bun run db:migrate`
-    seed.ts         # Example seed script — run via `bun run db:seed`
-    schema/
-      index.ts      # Barrel export of all tables
-      auth.ts        # user/session/account/verification tables (Better Auth)
+  integrations/
+    drizzle/
+      client.ts     # Drizzle client (Pool + drizzle instance), closeDb() for shutdown
+      migrate.ts     # Applies migrations from drizzle/ — run via `bun run db:migrate`
+      seed.ts        # Example seed script — run via `bun run db:seed`
+      schema/
+        index.ts     # Barrel export of all tables — this is what drizzle.config.ts points at
+        auth.ts       # user/session/account/verification tables (Better Auth)
+    better-auth/
+      auth.ts        # Better Auth instance (drizzle adapter, email/password)
+      middleware.ts  # requireAuth middleware — 401s if there's no valid session
 drizzle/            # Generated SQL migrations + snapshots (committed to git)
 drizzle.config.ts   # drizzle-kit config (schema location, migrations output, credentials)
 ```
 
 `app.ts` is exported separately from `index.ts` so routes can be tested directly via `app.request(...)` without binding a port.
+
+Third-party integrations live under `src/integrations/<vendor>/` — everything a given vendor touches (client, config, schema, middleware) stays together, so adding or removing one doesn't mean hunting across `lib/`, `middleware/`, and `db/`. The one exception is `drizzle/schema/`: it holds tables for every vendor (including `better-auth`'s), because drizzle-kit needs a single schema entrypoint — "what tables exist" is the ORM's concern even when a table's shape is dictated by another vendor.
 
 ## Adding a Route
 
@@ -100,21 +103,21 @@ app.route("/todos", todos);
 
 ## Database
 
-Schema lives in `src/db/schema/` as plain Drizzle table definitions, one file per table, re-exported from `src/db/schema/index.ts`. `src/db/index.ts` exports a shared `db` client built on a `pg.Pool`, plus `closeDb()` for graceful shutdown.
+Schema lives in `src/integrations/drizzle/schema/` as plain Drizzle table definitions, one file per table, re-exported from `schema/index.ts`. `src/integrations/drizzle/client.ts` exports a shared `db` client built on a `pg.Pool`, plus `closeDb()` for graceful shutdown.
 
 **Workflow:**
 
-1. Edit or add a table in `src/db/schema/`.
+1. Edit or add a table in `src/integrations/drizzle/schema/`.
 2. `bun run db:generate` — diffs the schema against migration history and writes a new SQL migration under `drizzle/`.
 3. `bun run db:migrate` — applies any pending migrations to the database configured via `DATABASE_URL`.
 
 Migration files are plain SQL and are committed to git — they're the source of truth for schema history, and running `db:migrate` again is a no-op if nothing is pending. `db:push` is available for quick local iteration (it syncs the schema directly, skipping migration files) but shouldn't be used against a database you care about.
 
-`bun run db:seed` runs `src/db/seed.ts`, a plain script using the same `db` client — extend it with whatever fixture data your app needs.
+`bun run db:seed` runs `src/integrations/drizzle/seed.ts`, a plain script using the same `db` client — extend it with whatever fixture data your app needs.
 
 ## Authentication
 
-Auth is handled by [Better Auth](https://www.better-auth.com), configured in `src/lib/auth.ts` with the Drizzle adapter and email/password sign-in. Its routes are mounted at `/api/auth/*` in `src/app.ts`:
+Auth is handled by [Better Auth](https://www.better-auth.com), configured in `src/integrations/better-auth/auth.ts` with the Drizzle adapter and email/password sign-in. Its routes are mounted at `/api/auth/*` in `src/app.ts`:
 
 - `POST /api/auth/sign-up/email` — create an account
 - `POST /api/auth/sign-in/email` — sign in, sets a session cookie
@@ -123,13 +126,13 @@ Auth is handled by [Better Auth](https://www.better-auth.com), configured in `sr
 
 Testing with curl/Postman: sign-in works fine, but sign-out and other state-changing calls need an `Origin` header matching a trusted origin (browsers send this automatically; curl doesn't) — CSRF protection rejects them otherwise.
 
-The `user`, `session`, `account`, and `verification` tables (`src/db/schema/auth.ts`) were generated with `bunx @better-auth/cli generate --config src/lib/auth.ts --output src/db/schema/auth.ts` — re-run that (and `bun run db:generate`) after changing `auth.ts`, rather than hand-editing the schema.
+The `user`, `session`, `account`, and `verification` tables (`src/integrations/drizzle/schema/auth.ts`) were generated with `bunx @better-auth/cli generate --config src/integrations/better-auth/auth.ts --output src/integrations/drizzle/schema/auth.ts` — re-run that (and `bun run db:generate`) after changing `auth.ts`, rather than hand-editing the schema.
 
-**Protecting a route:** use the `requireAuth` middleware (`src/middleware/auth.ts`) — see `src/routes/me.ts` for a working example:
+**Protecting a route:** use the `requireAuth` middleware (`src/integrations/better-auth/middleware.ts`) — see `src/routes/me.ts` for a working example:
 
 ```ts
 import { Hono } from "hono";
-import { type AuthVariables, requireAuth } from "#/middleware/auth";
+import { type AuthVariables, requireAuth } from "#/integrations/better-auth/middleware";
 
 export const me = new Hono<{ Variables: AuthVariables }>().get("/", requireAuth, (c) =>
   c.json({ user: c.get("user") }),

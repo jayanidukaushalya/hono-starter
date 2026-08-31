@@ -1,6 +1,6 @@
 import { APIError } from "better-auth";
-import { closeDb } from "#/db";
-import { auth } from "#/lib/auth";
+import { auth } from "#/integrations/better-auth/auth";
+import { closeDb } from "#/integrations/drizzle/client";
 
 async function main() {
 	console.log("Seeding database...");

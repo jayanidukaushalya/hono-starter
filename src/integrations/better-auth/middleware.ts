@@ -1,6 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import { HTTPException } from "hono/http-exception";
-import { auth } from "#/lib/auth";
+import { auth } from "#/integrations/better-auth/auth";
 
 export type AuthVariables = {
 	user: (typeof auth.$Infer.Session)["user"];

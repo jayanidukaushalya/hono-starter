@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
-import { auth } from "#/lib/auth";
+import { auth } from "#/integrations/better-auth/auth";
 import { env } from "#/lib/env";
 import { errorHandler } from "#/lib/errors";
 import { greet } from "#/routes/greet";
